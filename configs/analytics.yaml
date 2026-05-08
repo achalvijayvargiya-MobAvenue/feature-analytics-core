@@ -1,0 +1,22 @@
+run:
+  name: local_mvp
+  output_dir: outputs
+  seed: 42
+
+contracts:
+  model_manifest_path: inputs/model_manifest.json
+  feature_catalog_path: inputs/feature_catalog.parquet
+  prediction_dump_path: inputs/validation_predictions.parquet
+
+pipeline:
+  run_permutation_importance: true
+  run_residual_dataset: true
+  run_interaction_mining: false
+  run_cross_candidates: false
+
+metrics:
+  primary: auc
+  secondary:
+    - logloss
+    - ndcg
+

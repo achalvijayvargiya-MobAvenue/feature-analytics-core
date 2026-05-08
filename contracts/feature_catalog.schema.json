@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FeatureCatalogRecord",
+  "type": "object",
+  "required": ["feature_name", "tower", "feature_type"],
+  "properties": {
+    "feature_name": { "type": "string", "minLength": 1 },
+    "tower": { "type": "string", "enum": ["user", "client", "shared", "unknown"] },
+    "feature_type": { "type": "string", "enum": ["categorical", "numerical", "multi", "other"] },
+    "is_multi": { "type": "boolean" },
+    "cardinality_estimate": { "type": ["integer", "null"], "minimum": 0 },
+    "missing_ratio": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0 },
+    "normalization": { "type": ["string", "null"] },
+    "is_embedding_feature": { "type": ["boolean", "null"] }
+  },
+  "additionalProperties": true
+}
+

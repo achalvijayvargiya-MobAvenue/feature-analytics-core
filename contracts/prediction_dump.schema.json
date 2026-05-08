@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PredictionDumpRecord",
+  "type": "object",
+  "required": ["row_id", "label", "prediction"],
+  "properties": {
+    "row_id": { "type": ["string", "integer"] },
+    "label": { "type": "number" },
+    "prediction": { "type": "number" },
+    "logits": { "type": ["number", "null"] },
+    "user_embedding_norm": { "type": ["number", "null"] },
+    "client_embedding_norm": { "type": ["number", "null"] }
+  },
+  "additionalProperties": true
+}
+

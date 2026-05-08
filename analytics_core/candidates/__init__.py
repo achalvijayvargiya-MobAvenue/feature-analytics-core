@@ -1,0 +1,2 @@
+"""Cross-candidate generation modules."""
+
