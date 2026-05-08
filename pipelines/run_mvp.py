@@ -4,6 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
+import numpy as np
+
 from analytics_core.importance.permutation_importance import run_permutation_importance
 from analytics_core.io.contracts import (
     load_feature_catalog,
@@ -11,6 +13,9 @@ from analytics_core.io.contracts import (
     load_prediction_dump,
     load_yaml,
 )
+from analytics_core.residuals.residual_model import train_residual_model
+from analytics_core.encoding import encode_features_tabular
+from analytics_core.interactions.interaction_mining import mine_interactions
 from analytics_core.residuals.residual_dataset import build_residual_dataset
 
 
@@ -139,6 +144,7 @@ def run(config_path: str) -> None:
     if bool(pipeline_cfg.get("run_residual_dataset", True)):
         residual_dataset_path = str(residual_dir / "residual_dataset.parquet")
         residual_slices_path = str(residual_dir / "residual_slices.csv")
+        min_slice_count = int(pipeline_cfg.get("residual_min_slice_count", 50))
         residual_result = build_residual_dataset(
             prediction_df=pred_df,
             feature_cols=feature_cols,
@@ -146,10 +152,45 @@ def run(config_path: str) -> None:
             prediction_col=prediction_col,
             dataset_path=residual_dataset_path,
             slices_path=residual_slices_path,
+            min_slice_count=min_slice_count,
         )
         print("[mvp] residual_dataset=", residual_result.dataset_path)
         print("[mvp] residual_slices=", residual_result.slices_path)
         print("[mvp] residual_rows=", residual_result.rows)
+
+    if bool(pipeline_cfg.get("run_residual_model", False)):
+        target_col = str(pipeline_cfg.get("residual_target_col", "residual_bce"))
+        model_path = str(residual_dir / "residual_model.pkl")
+        fi_path = str(residual_dir / "tree_feature_importance.csv")
+        metrics_path = str(residual_dir / "residual_model_metrics.json")
+        y_true = pred_df[label_col].astype(float).to_numpy()
+        y_prob = pred_df[prediction_col].astype(float).clip(1e-7, 1 - 1e-7).to_numpy()
+        residual_abs = np.abs(y_true - y_prob)
+        residual_bce = -(y_true * np.log(y_prob) + (1.0 - y_true) * np.log(1.0 - y_prob))
+        rm = train_residual_model(
+            df=pred_df.assign(residual_abs=residual_abs, residual_bce=residual_bce),
+            feature_cols=feature_cols,
+            target_col=target_col,
+            model_path=model_path,
+            feature_importance_path=fi_path,
+            metrics_path=metrics_path,
+            seed=seed,
+        )
+        print("[mvp] residual_model=", rm.model_path)
+        print("[mvp] residual_model_metrics=", rm.metrics_path)
+        print("[mvp] tree_feature_importance=", rm.feature_importance_path)
+
+        if bool(pipeline_cfg.get("run_interaction_mining", False)):
+            import pickle
+
+            with open(model_path, "rb") as f:
+                model = pickle.load(f)
+            x = encode_features_tabular(pred_df, [c for c in feature_cols if c in pred_df.columns])
+            interactions_dir = out_dir / "interactions"
+            interactions_dir.mkdir(parents=True, exist_ok=True)
+            out_path = str(interactions_dir / "interaction_scores.csv")
+            im = mine_interactions(model=model, x=x, output_path=out_path, max_pairs=int(pipeline_cfg.get("max_interaction_pairs", 500)))
+            print("[mvp] interactions=", im.output_path, "method=", im.method, "pairs=", im.pairs)
 
 
 def main() -> None:

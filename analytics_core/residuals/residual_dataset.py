@@ -25,6 +25,7 @@ def build_residual_dataset(
     prediction_col: str,
     dataset_path: str,
     slices_path: str,
+    min_slice_count: int = 50,
     max_slice_cardinality: int = 50,
     top_k_per_feature: int = 10,
 ) -> ResidualResult:
@@ -63,6 +64,7 @@ def build_residual_dataset(
                 avg_residual_abs=("residual_abs", "mean"),
                 avg_residual_bce=("residual_bce", "mean"),
             )
+            .query("count >= @min_slice_count")
             .sort_values("avg_residual_abs", ascending=False)
             .head(top_k_per_feature)
         )

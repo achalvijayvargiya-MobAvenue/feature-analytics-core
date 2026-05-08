@@ -21,6 +21,7 @@ prediction_dump_builder:
 pipeline:
   run_permutation_importance: true
   permutation_mode: two_tower_true_rescore  # options: two_tower_true_rescore | surrogate
+  residual_min_slice_count: 50
   two_tower:
     src_path: ../Two_tower/src
     artifacts_base: s3://mobavenue-simplismart-aws-s3-apse-sg/rtb/data/two_tower_ml/3_Client/
@@ -28,7 +29,10 @@ pipeline:
     device: cuda
     batch_size: 2048
   run_residual_dataset: true
-  run_interaction_mining: false
+  run_residual_model: true
+  residual_target_col: residual_bce  # residual_bce | residual_abs
+  run_interaction_mining: true
+  max_interaction_pairs: 500
   run_cross_candidates: false
 
 metrics:
