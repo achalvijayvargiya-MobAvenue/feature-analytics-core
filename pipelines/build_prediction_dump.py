@@ -9,7 +9,6 @@ import pyarrow as pa
 import pyarrow.dataset as pads
 import pyarrow.parquet as pq
 
-from adapters.two_tower_adapter.scoring import TwoTowerRowScorer, TwoTowerScoringConfig
 from analytics_core.io.contracts import load_yaml
 
 
@@ -58,6 +57,9 @@ def run(config_path: str) -> None:
     if not artifacts_base:
         raise ValueError("pipeline.two_tower.artifacts_base is required for build_prediction_dump")
     try:
+        # Lazy import so non-adapter users don't need Two Tower deps.
+        from adapters.two_tower_adapter.scoring import TwoTowerRowScorer, TwoTowerScoringConfig
+
         scorer = TwoTowerRowScorer(
             TwoTowerScoringConfig(
                 src_path=src_path,

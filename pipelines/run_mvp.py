@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +18,9 @@ from analytics_core.residuals.residual_model import train_residual_model
 from analytics_core.encoding import encode_features_tabular
 from analytics_core.interactions.interaction_mining import mine_interactions
 from analytics_core.residuals.residual_dataset import build_residual_dataset
+from analytics_core.candidates.cross_candidates import generate_cross_candidates
+from analytics_core.ops.run_metadata import generate_run_id, write_run_metadata
+from analytics_core.ops.data_quality import compute_data_quality
 
 
 DEFAULT_NON_FEATURE_COLS = {
@@ -61,9 +65,13 @@ def _build_two_tower_row_scorer(cfg: dict):
 def run(config_path: str) -> None:
     cfg = load_yaml(config_path)
     contracts = cfg.get("contracts", {})
-    out_dir = Path(cfg.get("run", {}).get("output_dir", "outputs"))
+    run_cfg = cfg.get("run", {})
+    base_out_dir = Path(run_cfg.get("output_dir", "outputs"))
+    run_id = str(run_cfg.get("run_id") or generate_run_id(run_cfg.get("name")))
+    out_dir = base_out_dir / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
     seed = int(cfg.get("run", {}).get("seed", 42))
+    t0 = time.time()
 
     manifest_path = contracts.get("model_manifest_path")
     feature_catalog_path = contracts.get("feature_catalog_path")
@@ -97,6 +105,18 @@ def run(config_path: str) -> None:
     print("[mvp] columns=", len(pred_df.columns))
     print("[mvp] feature_columns=", len(feature_cols))
     print(f"[mvp] output_dir={out_dir}")
+    print(f"[mvp] run_id={run_id}")
+
+    # Phase-5: basic data quality snapshot
+    dq_dir = out_dir / "data_quality"
+    dq = compute_data_quality(
+        df=pred_df,
+        label_col=label_col,
+        prediction_col=prediction_col,
+        feature_cols=feature_cols,
+        output_dir=str(dq_dir),
+    )
+    print("[mvp] data_quality_summary=", dq.summary_path)
 
     if bool(pipeline_cfg.get("run_permutation_importance", True)):
         permutation_mode = str(pipeline_cfg.get("permutation_mode", "surrogate")).lower().strip()
@@ -191,6 +211,45 @@ def run(config_path: str) -> None:
             out_path = str(interactions_dir / "interaction_scores.csv")
             im = mine_interactions(model=model, x=x, output_path=out_path, max_pairs=int(pipeline_cfg.get("max_interaction_pairs", 500)))
             print("[mvp] interactions=", im.output_path, "method=", im.method, "pairs=", im.pairs)
+
+            if bool(pipeline_cfg.get("run_cross_candidates", False)):
+                cross_dir = out_dir / "cross_candidates"
+                cross_dir.mkdir(parents=True, exist_ok=True)
+                yaml_path = str(cross_dir / "candidate_crosses.yaml")
+                meta_path = str(cross_dir / "candidate_cross_metadata.csv")
+                import pandas as pd
+
+                interactions_df = pd.read_csv(out_path)
+                cc = generate_cross_candidates(
+                    interactions_df=interactions_df,
+                    prediction_df=pred_df,
+                    output_yaml_path=yaml_path,
+                    output_metadata_path=meta_path,
+                    top_n=int(pipeline_cfg.get("cross_top_n", 10)),
+                    max_cardinality_estimate=int(pipeline_cfg.get("cross_max_cardinality_estimate", 2_000_000)),
+                    max_feature_nunique=int(pipeline_cfg.get("cross_max_feature_nunique", 50_000)),
+                )
+                print("[mvp] cross_candidates_yaml=", cc.yaml_path)
+                print("[mvp] cross_candidates_metadata=", cc.metadata_path)
+                print("[mvp] cross_candidates_feasible=", cc.n_candidates)
+
+    # Phase-5: run metadata for reproducibility
+    elapsed_s = time.time() - t0
+    write_run_metadata(
+        output_dir=out_dir,
+        run_id=run_id,
+        config_path=config_path,
+        config_dict=cfg,
+        inputs={
+            "model_manifest_path": manifest_path,
+            "feature_catalog_path": feature_catalog_path,
+            "prediction_dump_path": prediction_path,
+        },
+        outputs={
+            "elapsed_s": float(elapsed_s),
+        },
+    )
+    print(f"[mvp] done elapsed_s={elapsed_s:.1f} metadata={out_dir / 'run_metadata.json'}")
 
 
 def main() -> None:

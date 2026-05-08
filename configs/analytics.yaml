@@ -1,6 +1,8 @@
 run:
   name: first_sagemaker_run
   output_dir: outputs
+  # Optional. If unset, pipeline generates run_id like "{name}_YYYYmmdd_HHMMSS".
+  run_id: null
   seed: 42
 
 contracts:
@@ -33,7 +35,10 @@ pipeline:
   residual_target_col: residual_bce  # residual_bce | residual_abs
   run_interaction_mining: true
   max_interaction_pairs: 500
-  run_cross_candidates: false
+  run_cross_candidates: true
+  cross_top_n: 20
+  cross_max_cardinality_estimate: 2000000
+  cross_max_feature_nunique: 50000
 
 metrics:
   primary: auc
