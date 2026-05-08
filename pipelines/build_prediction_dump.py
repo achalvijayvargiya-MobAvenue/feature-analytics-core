@@ -57,24 +57,46 @@ def run(config_path: str) -> None:
     artifacts_base = str(two_tower_cfg.get("artifacts_base", ""))
     if not artifacts_base:
         raise ValueError("pipeline.two_tower.artifacts_base is required for build_prediction_dump")
-    scorer = TwoTowerRowScorer(
-        TwoTowerScoringConfig(
-            src_path=src_path,
-            artifacts_base=artifacts_base,
-            client_id_col=client_id_col,
-            device=str(two_tower_cfg.get("device", "cpu")),
-            batch_size=int(two_tower_cfg.get("batch_size", 2048)),
+    try:
+        scorer = TwoTowerRowScorer(
+            TwoTowerScoringConfig(
+                src_path=src_path,
+                artifacts_base=artifacts_base,
+                client_id_col=client_id_col,
+                device=str(two_tower_cfg.get("device", "cpu")),
+                batch_size=int(two_tower_cfg.get("batch_size", 2048)),
+            )
         )
-    )
+    except Exception as e:
+        raise RuntimeError(
+            "Failed to initialize Two Tower scorer. Common causes:\n"
+            "- `pipeline.two_tower.src_path` does not point to Two_tower/src on this machine\n"
+            "- `pipeline.two_tower.artifacts_base` is wrong or not accessible (S3 IAM / network)\n"
+            "- missing dependencies (torch, s3fs, pyarrow)\n"
+            f"\nDetails: {e!r}"
+        ) from e
 
     feature_cols = list(dict.fromkeys(user_cols + client_cols))
     requested_cols = [label_col, client_id_col] + feature_cols
 
-    dset = pads.dataset(val_path, format="parquet")
+    try:
+        dset = pads.dataset(val_path, format="parquet")
+    except Exception as e:
+        raise RuntimeError(
+            "Failed to open validation dataset via PyArrow. Common causes:\n"
+            "- `paths.val` in Two Tower train config is wrong\n"
+            "- S3 access not configured for this runtime role (IAM permissions)\n"
+            "- missing `s3fs`/`fsspec` in environment\n"
+            f"\nval_path={val_path}\nDetails: {e!r}"
+        ) from e
     available = set(dset.schema.names)
     missing_required = [c for c in (label_col, client_id_col) if c not in available]
     if missing_required:
-        raise KeyError(f"Validation dataset missing required columns: {missing_required}")
+        avail_preview = sorted(list(available))[:50]
+        raise KeyError(
+            f"Validation dataset missing required columns: {missing_required}. "
+            f"Available (first 50): {avail_preview}"
+        )
     projected = [c for c in requested_cols if c in available]
 
     row_id = 0
@@ -86,6 +108,9 @@ def run(config_path: str) -> None:
     print(f"[build_dump] val_path={val_path}")
     print(f"[build_dump] output_path={output_path}")
     print(f"[build_dump] projected_columns={len(projected)} requested={len(requested_cols)}")
+    if len(projected) < len(requested_cols):
+        missing_opt = [c for c in requested_cols if c not in projected]
+        print(f"[build_dump] NOTE: {len(missing_opt)} requested columns missing in dataset (will be null-filled).")
 
     try:
         scanner = pads.Scanner.from_dataset(dset, columns=projected, batch_size=batch_rows)
