@@ -84,13 +84,29 @@ def mine_interactions(
     x: pd.DataFrame,
     output_path: str,
     max_pairs: int = 500,
+    method: str = "auto",
 ) -> InteractionMiningResult:
-    method = "shap"
-    try:
-        out = _interaction_pairs_from_shap(model, x, max_pairs=max_pairs)
-    except Exception:
-        method = "tree_split_cooccurrence"
+    """
+    method:
+      - auto: SHAP interactions if possible, else tree split co-occurrence
+      - shap: SHAP only (raises if it fails)
+      - tree_split: fast heuristic from booster trees (no SHAP)
+    """
+
+    key = (method or "auto").strip().lower()
+    if key == "tree_split":
+        used = "tree_split_cooccurrence"
         out = _interaction_pairs_from_tree_splits(model, list(x.columns), max_pairs=max_pairs)
+    elif key == "shap":
+        used = "shap"
+        out = _interaction_pairs_from_shap(model, x, max_pairs=max_pairs)
+    else:
+        used = "shap"
+        try:
+            out = _interaction_pairs_from_shap(model, x, max_pairs=max_pairs)
+        except Exception:
+            used = "tree_split_cooccurrence"
+            out = _interaction_pairs_from_tree_splits(model, list(x.columns), max_pairs=max_pairs)
     out.to_csv(output_path, index=False)
-    return InteractionMiningResult(output_path=output_path, method=method, pairs=int(out.shape[0]))
+    return InteractionMiningResult(output_path=output_path, method=used, pairs=int(out.shape[0]))
 

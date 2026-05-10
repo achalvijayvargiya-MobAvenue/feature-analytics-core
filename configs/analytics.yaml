@@ -35,6 +35,10 @@ pipeline:
   residual_target_col: residual_bce  # residual_bce | residual_abs
   run_interaction_mining: true
   max_interaction_pairs: 500
+  # SHAP interaction values scale badly with row count. 0 = all rows (slow on large val sets).
+  interaction_max_rows: 20000
+  # auto: try SHAP then tree-split fallback | shap | tree_split (fast, no SHAP)
+  interaction_method: auto
   run_cross_candidates: true
   cross_top_n: 20
   cross_max_cardinality_estimate: 2000000

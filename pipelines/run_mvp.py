@@ -206,10 +206,21 @@ def run(config_path: str) -> None:
             with open(model_path, "rb") as f:
                 model = pickle.load(f)
             x = encode_features_tabular(pred_df, [c for c in feature_cols if c in pred_df.columns])
+            max_ix_rows = int(pipeline_cfg.get("interaction_max_rows", 0))
+            if max_ix_rows > 0 and len(x) > max_ix_rows:
+                x = x.sample(n=max_ix_rows, random_state=seed).reset_index(drop=True)
+                print(f"[mvp] interaction_mining subsample rows={len(x)} (interaction_max_rows={max_ix_rows})")
             interactions_dir = out_dir / "interactions"
             interactions_dir.mkdir(parents=True, exist_ok=True)
             out_path = str(interactions_dir / "interaction_scores.csv")
-            im = mine_interactions(model=model, x=x, output_path=out_path, max_pairs=int(pipeline_cfg.get("max_interaction_pairs", 500)))
+            ix_method = str(pipeline_cfg.get("interaction_method", "auto"))
+            im = mine_interactions(
+                model=model,
+                x=x,
+                output_path=out_path,
+                max_pairs=int(pipeline_cfg.get("max_interaction_pairs", 500)),
+                method=ix_method,
+            )
             print("[mvp] interactions=", im.output_path, "method=", im.method, "pairs=", im.pairs)
 
             if bool(pipeline_cfg.get("run_cross_candidates", False)):
